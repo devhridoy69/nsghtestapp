@@ -68,7 +68,7 @@ fun HospitalHeader(
     isOnline: Boolean,
     syncStatus: SyncStatus,
     onSyncClick: () -> Unit,
-    onOpenSyncSettings: () -> Unit,
+    onOpenSyncSettings: () -> Unit = {},
     onOpenCredits: () -> Unit,
     modifier: Modifier = Modifier
 ) {
