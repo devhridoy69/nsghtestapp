@@ -1,11 +1,16 @@
 package com.example.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,11 +32,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -47,35 +55,81 @@ fun TestItemCard(
     onToggleSelect: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
+    // 1. Tactile spring scale physics on tap/press
+    val pressScale by animateFloatAsState(
+        targetValue = if (isPressed) 0.97f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "press_scale"
+    )
+
+    // 2. Fluid color & border transitions
     val borderColor by animateColorAsState(
-        targetValue = if (isSelected) HospitalNavy else MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+        targetValue = if (isSelected) HospitalNavy else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
+        animationSpec = tween(durationMillis = 200),
         label = "border_color"
     )
 
     val cardBgColor by animateColorAsState(
         targetValue = if (isSelected) Color(0xFFF0F7FF) else MaterialTheme.colorScheme.surface,
+        animationSpec = tween(durationMillis = 200),
         label = "card_bg"
     )
 
-    val checkScale by animateFloatAsState(
-        targetValue = if (isSelected) 1f else 0.92f,
-        animationSpec = spring(dampingRatio = 0.6f),
-        label = "scale"
+    val borderWidth by animateDpAsState(
+        targetValue = if (isSelected) 2.dp else 1.dp,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy),
+        label = "border_width"
+    )
+
+    val cardElevation by animateDpAsState(
+        targetValue = if (isSelected) 4.dp else 1.dp,
+        animationSpec = tween(180),
+        label = "elevation"
+    )
+
+    // 3. Checkmark pop bounce
+    val buttonScale by animateFloatAsState(
+        targetValue = if (isSelected) 1.05f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "button_scale"
+    )
+
+    val buttonBgColor by animateColorAsState(
+        targetValue = if (isSelected) HospitalNavy else HospitalNavy.copy(alpha = 0.08f),
+        animationSpec = tween(180),
+        label = "btn_bg"
     )
 
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .scale(pressScale)
             .clip(RoundedCornerShape(14.dp))
             .border(
-                width = if (isSelected) 2.dp else 1.dp,
+                width = borderWidth,
                 color = borderColor,
                 shape = RoundedCornerShape(14.dp)
             )
-            .clickable { onToggleSelect() }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null
+            ) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onToggleSelect()
+            }
             .testTag("test_card_${test.effectiveId}"),
         colors = CardDefaults.cardColors(containerColor = cardBgColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 3.dp else 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = cardElevation)
     ) {
         Row(
             modifier = Modifier
@@ -84,7 +138,7 @@ fun TestItemCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Test Name (Left column)
+            // Test Name
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -95,11 +149,11 @@ fun TestItemCard(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
-                    lineHeight = 20.sp
+                    lineHeight = 21.sp
                 )
             }
 
-            // Test Price & Select Toggle (Right column)
+            // Test Price & Select Toggle Button
             Column(
                 horizontalAlignment = Alignment.End
             ) {
@@ -122,12 +176,12 @@ fun TestItemCard(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Select / Selected Button
+                // Select / Selected Tactile Button with Spring Bounce
                 Box(
                     modifier = Modifier
-                        .scale(checkScale)
+                        .scale(buttonScale)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(if (isSelected) HospitalNavy else HospitalNavy.copy(alpha = 0.08f))
+                        .background(buttonBgColor)
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                         .testTag("select_toggle_${test.effectiveId}"),
                     contentAlignment = Alignment.Center

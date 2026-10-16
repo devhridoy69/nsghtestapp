@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "NSGH Tests"
+rootProject.name = "SGH Test Rate"
 
 include(":app")

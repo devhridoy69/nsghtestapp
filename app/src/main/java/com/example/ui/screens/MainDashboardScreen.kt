@@ -1,13 +1,22 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,12 +27,12 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -46,6 +55,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,14 +63,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.CreditsDialog
 import com.example.ui.components.HospitalHeader
+import com.example.ui.components.RollingNumberText
 import com.example.ui.components.SelectedTestsBottomSheet
 import com.example.ui.components.SlidingMarqueeText
 import com.example.ui.components.SyncSettingsDialog
@@ -85,7 +100,20 @@ fun MainDashboardScreen(
     val showSyncSettingsDialog by viewModel.showSyncSettingsDialog.collectAsState()
     val discountPercentage by viewModel.discountPercentage.collectAsState()
 
+    val haptic = LocalHapticFeedback.current
+    var isSearchFocused by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
+
+    val listState = rememberLazyListState()
+    val isScrolled by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 24 }
+    }
+
+    val headerElevation by animateDpAsState(
+        targetValue = if (isScrolled) 8.dp else 0.dp,
+        animationSpec = tween(durationMillis = 200),
+        label = "header_elevation"
+    )
 
     val selectedCount = selectedTestsMap.size
     val subtotal = selectedTestsMap.values.sumOf { it.price }
@@ -96,35 +124,51 @@ fun MainDashboardScreen(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            HospitalHeader(
-                isOnline = isOnline,
-                syncStatus = syncStatus,
-                onSyncClick = { viewModel.manualSync() },
-                onOpenCredits = { viewModel.setCreditsDialogVisible(true) }
-            )
+            Surface(
+                shadowElevation = headerElevation,
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                HospitalHeader(
+                    isOnline = isOnline,
+                    syncStatus = syncStatus,
+                    onSyncClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.manualSync()
+                    },
+                    onOpenCredits = { viewModel.setCreditsDialogVisible(true) }
+                )
+            }
         },
         bottomBar = {
-            // Animated Bottom Floating Calculation Tray
+            // Animated Bottom Floating Calculation Tray with snappy spring physics
             AnimatedVisibility(
                 visible = selectedCount > 0,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+                enter = slideInVertically(
+                    initialOffsetY = { it },
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                ) + fadeIn(),
+                exit = slideOutVertically(
+                    targetOffsetY = { it },
+                    animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy)
+                ) + fadeOut()
             ) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .shadow(16.dp, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                        .shadow(20.dp, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                         .testTag("floating_total_bar"),
                     color = HospitalNavy,
-                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
-                        // Quick Special Discount Selector: 0%, 10%, 20%, 25%, 30%
+                        // Quick Special Discount Selector with tactile bounce
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -140,26 +184,49 @@ fun MainDashboardScreen(
                             )
                             listOf(0.0, 10.0, 20.0, 25.0, 30.0).forEach { pct ->
                                 val isSelected = discountPercentage == pct
+                                val pillScale by animateFloatAsState(
+                                    targetValue = if (isSelected) 1.08f else 1f,
+                                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                                    label = "pill_scale"
+                                )
+                                val pillBg by animateColorAsState(
+                                    targetValue = if (isSelected) Color.White else Color.White.copy(alpha = 0.16f),
+                                    animationSpec = tween(150),
+                                    label = "pill_bg"
+                                )
+                                val pillTextColor by animateColorAsState(
+                                    targetValue = if (isSelected) HospitalNavy else Color.White,
+                                    animationSpec = tween(150),
+                                    label = "pill_text"
+                                )
+
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(if (isSelected) Color.White else Color.White.copy(alpha = 0.18f))
-                                        .clickable { viewModel.setDiscount(pct) }
-                                        .padding(vertical = 4.dp),
+                                        .scale(pillScale)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(pillBg)
+                                        .clickable(
+                                            interactionSource = remember { MutableInteractionSource() },
+                                            indication = null
+                                        ) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            viewModel.setDiscount(pct)
+                                        }
+                                        .padding(vertical = 5.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = if (pct == 0.0) "0%" else "${pct.toInt()}%",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) HospitalNavy else Color.White
+                                        color = pillTextColor
                                     )
                                 }
                             }
                         }
 
-                        // Total Price and View Bill Button Row
+                        // Total Price and Rolling Digits
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -171,7 +238,7 @@ fun MainDashboardScreen(
                                         modifier = Modifier
                                             .clip(CircleShape)
                                             .background(MedicalRed)
-                                            .padding(horizontal = 7.dp, vertical = 2.dp)
+                                            .padding(horizontal = 8.dp, vertical = 2.dp)
                                     ) {
                                         Text(
                                             text = "$selectedCount Selected",
@@ -197,11 +264,12 @@ fun MainDashboardScreen(
                                         modifier = Modifier.padding(bottom = 2.dp)
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
-                                    Text(
-                                        text = "${netTotal.toInt()}",
+                                    // Rolling number animation
+                                    RollingNumberText(
+                                        number = netTotal.toInt(),
+                                        color = Color.White,
                                         fontSize = 24.sp,
-                                        fontWeight = FontWeight.Black,
-                                        color = Color.White
+                                        fontWeight = FontWeight.Black
                                     )
                                     if (discountPercentage > 0) {
                                         Spacer(modifier = Modifier.width(6.dp))
@@ -215,7 +283,10 @@ fun MainDashboardScreen(
                             }
 
                             Button(
-                                onClick = { viewModel.setEstimateSheetVisible(true) },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    viewModel.setEstimateSheetVisible(true)
+                                },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color.White),
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.testTag("view_estimate_button")
@@ -246,7 +317,7 @@ fun MainDashboardScreen(
                 .padding(paddingValues)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // 1. Sliding Marquee Notice Banner (Requested by user)
+            // 1. Sliding Marquee Notice Banner
             SlidingMarqueeText(
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
@@ -254,48 +325,71 @@ fun MainDashboardScreen(
                     .testTag("dashboard_sliding_text")
             )
 
-            // 2. Search & Sort Bar Row
+            // 2. Search & Sort Bar Row with fluid focus animation
+            val searchBorderColor by animateColorAsState(
+                targetValue = if (isSearchFocused) HospitalNavy else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                animationSpec = tween(200),
+                label = "search_border"
+            )
+            val searchElevation by animateDpAsState(
+                targetValue = if (isSearchFocused) 4.dp else 0.dp,
+                animationSpec = tween(200),
+                label = "search_elevation"
+            )
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { viewModel.onSearchQueryChange(it) },
-                    placeholder = { Text("Search test name...", fontSize = 13.sp) },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "Search",
-                            tint = HospitalNavy,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
-                                Icon(
-                                    imageVector = Icons.Default.Clear,
-                                    contentDescription = "Clear search",
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    },
-                    singleLine = true,
+                Surface(
+                    modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(14.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White,
-                        focusedBorderColor = HospitalNavy,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                    ),
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("search_text_input")
-                )
+                    shadowElevation = searchElevation,
+                    color = Color.White
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { viewModel.onSearchQueryChange(it) },
+                        placeholder = { Text("Search test name...", fontSize = 13.sp) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = if (isSearchFocused) HospitalNavy else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        trailingIcon = {
+                            AnimatedVisibility(
+                                visible = searchQuery.isNotEmpty(),
+                                enter = fadeIn() + scaleIn(),
+                                exit = fadeOut() + scaleOut()
+                            ) {
+                                IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Clear,
+                                        contentDescription = "Clear search",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White,
+                            focusedBorderColor = searchBorderColor,
+                            unfocusedBorderColor = searchBorderColor
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { isSearchFocused = it.isFocused }
+                            .testTag("search_text_input")
+                    )
+                }
 
                 Spacer(modifier = Modifier.width(8.dp))
 
@@ -309,7 +403,7 @@ fun MainDashboardScreen(
                             .background(Color.White)
                             .border(
                                 1.dp,
-                                MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
                                 RoundedCornerShape(14.dp)
                             )
                             .testTag("sort_button")
@@ -351,7 +445,7 @@ fun MainDashboardScreen(
                 }
             }
 
-            // Diagnostic Tests Results Header
+            // Results count
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -375,7 +469,7 @@ fun MainDashboardScreen(
                 }
             }
 
-            // 3. Test Items List (Name and Price only)
+            // 3. Fluid LazyColumn with animateItem() placement animation
             if (tests.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -390,41 +484,51 @@ fun MainDashboardScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedButton(onClick = {
-                            viewModel.onSearchQueryChange("")
-                        }) {
+                        OutlinedButton(onClick = { viewModel.onSearchQueryChange("") }) {
                             Text("Reset Search")
                         }
                     }
                 }
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxSize()
                         .testTag("tests_lazy_list"),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 90.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 100.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(tests, key = { it.effectiveId }) { test ->
-                        TestItemCard(
-                            test = test,
-                            isSelected = viewModel.isTestSelected(test.effectiveId),
-                            onToggleSelect = { viewModel.toggleTestSelection(test) }
-                        )
+                        Box(modifier = Modifier.animateItem()) {
+                            TestItemCard(
+                                test = test,
+                                isSelected = viewModel.isTestSelected(test.effectiveId),
+                                onToggleSelect = { viewModel.toggleTestSelection(test) }
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    // Selected Tests Bottom Sheet (Estimate Summary)
+    // Selected Tests Bottom Sheet
     if (showEstimateSheet) {
         SelectedTestsBottomSheet(
             selectedTests = selectedTestsMap.values.toList(),
             discountPercentage = discountPercentage,
-            onDiscountChange = { viewModel.setDiscount(it) },
-            onRemoveTest = { viewModel.removeTestFromSelection(it) },
-            onClearAll = { viewModel.clearAllSelections() },
+            onDiscountChange = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                viewModel.setDiscount(it)
+            },
+            onRemoveTest = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                viewModel.removeTestFromSelection(it)
+            },
+            onClearAll = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                viewModel.clearAllSelections()
+            },
             onDismiss = { viewModel.setEstimateSheetVisible(false) },
             generateShareText = { viewModel.generateEstimateSummaryText() }
         )

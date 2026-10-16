@@ -27,10 +27,12 @@ class SupabaseService(context: Context) {
         const val PREF_SUPABASE_ANON_KEY = "supabase_anon_key"
         const val PREF_SUPABASE_TABLE = "supabase_table"
         const val PREF_LAST_SYNC_TIME = "last_sync_time"
+        const val PREF_SAVED_NOTICE = "saved_notice_text"
 
         const val DEFAULT_URL = "https://lrhlmalvppklxandtwhk.supabase.co"
         const val DEFAULT_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxyaGxtYWx2cHBrbHhhbmR0d2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NjU0ODMsImV4cCI6MjEwNzE0MTQ4M30.TNVfzGHEwh20sJtLJMl2O1Dl4R8rDpLhV5isMUX3Kmk"
         const val DEFAULT_TABLE = "tests"
+        const val DEFAULT_NOTICE = "টেস্টের দাম যে কোনো সময় কমতে বা বাড়তে পারে। যে কোনো সমস্যায় 01711902062"
     }
 
     fun getSupabaseUrl(): String {
@@ -59,6 +61,12 @@ class SupabaseService(context: Context) {
 
     fun getLastSyncTime(): Long = prefs.getLong(PREF_LAST_SYNC_TIME, 0L)
 
+    fun getSavedNotice(): String = prefs.getString(PREF_SAVED_NOTICE, DEFAULT_NOTICE) ?: DEFAULT_NOTICE
+
+    fun saveNotice(notice: String) {
+        prefs.edit().putString(PREF_SAVED_NOTICE, notice.trim()).apply()
+    }
+
     fun saveConfig(url: String, key: String, table: String) {
         prefs.edit()
             .putString(PREF_SUPABASE_URL, url.trim().trimEnd('/'))
@@ -69,6 +77,43 @@ class SupabaseService(context: Context) {
 
     fun updateLastSyncTime() {
         prefs.edit().putLong(PREF_LAST_SYNC_TIME, System.currentTimeMillis()).apply()
+    }
+
+    suspend fun fetchNotice(): String = withContext(Dispatchers.IO) {
+        val url = getSupabaseUrl()
+        val key = getSupabaseKey()
+        if (url.isBlank() || key.isBlank()) return@withContext getSavedNotice()
+
+        // Try checking if a 'notices' or 'app_notice' table exists in Supabase
+        val possibleTables = listOf("notices", "app_notice", "settings")
+        for (tbl in possibleTables) {
+            try {
+                val request = Request.Builder()
+                    .url("$url/rest/v1/$tbl?select=*&limit=1")
+                    .addHeader("apikey", key)
+                    .addHeader("Authorization", "Bearer $key")
+                    .addHeader("Accept", "application/json")
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string() ?: ""
+                        val arr = JSONArray(body)
+                        if (arr.length() > 0) {
+                            val obj = arr.getJSONObject(0)
+                            val text = optStringAny(obj, "notice", "text", "message", "value", "content")
+                            if (!text.isNullOrBlank()) {
+                                saveNotice(text)
+                                return@withContext text
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                // Table might not exist yet, continue
+            }
+        }
+        return@withContext getSavedNotice()
     }
 
     suspend fun fetchTests(): Result<List<DiagnosticTest>> = withContext(Dispatchers.IO) {
@@ -99,7 +144,7 @@ class SupabaseService(context: Context) {
                     Log.e("SupabaseService", "HTTP $code: $errorBody")
 
                     val userMessage = when (code) {
-                        401, 403 -> "Authentication failed (HTTP $code). Please verify your Supabase anon API Key and Row Level Security (RLS) policies."
+                        401, 403 -> "Authentication failed (HTTP $code). Please verify your Supabase anon API Key."
                         404 -> "Table '$table' not found in Supabase (HTTP 404)."
                         else -> "Supabase connection error (HTTP $code): ${response.message}"
                     }

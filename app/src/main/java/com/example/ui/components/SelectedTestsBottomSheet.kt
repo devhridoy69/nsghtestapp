@@ -37,6 +37,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -70,7 +71,7 @@ fun SelectedTestsBottomSheet(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val subtotal = selectedTests.sumOf { it.price }
     val discountAmount = subtotal * (discountPercentage / 100.0)
@@ -268,21 +269,27 @@ fun SelectedTestsBottomSheet(
                 ) {
                     listOf(0.0, 10.0, 20.0, 25.0, 30.0).forEach { pct ->
                         val isSelected = discountPercentage == pct
-                        Box(
+                        Surface(
+                            onClick = { onDiscountChange(pct) },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (isSelected) HospitalNavy else HospitalNavy.copy(alpha = 0.08f),
                             modifier = Modifier
                                 .weight(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) HospitalNavy else HospitalNavy.copy(alpha = 0.08f))
-                                .clickable { onDiscountChange(pct) }
-                                .padding(vertical = 8.dp),
-                            contentAlignment = Alignment.Center
+                                .testTag("discount_pill_${pct.toInt()}")
                         ) {
-                            Text(
-                                text = if (pct == 0.0) "0%" else "${pct.toInt()}%",
-                                fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                                color = if (isSelected) Color.White else HospitalNavy
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (pct == 0.0) "0%" else "${pct.toInt()}%",
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                    color = if (isSelected) Color.White else HospitalNavy
+                                )
+                            }
                         }
                     }
                 }
@@ -356,12 +363,22 @@ fun SelectedTestsBottomSheet(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Text(
-                            text = "৳ ${netTotal.toInt()}",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Black,
-                            color = HospitalNavy
-                        )
+                        Row(verticalAlignment = Alignment.Bottom) {
+                            Text(
+                                text = "৳",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = HospitalNavy,
+                                modifier = Modifier.padding(bottom = 2.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            RollingNumberText(
+                                number = netTotal.toInt(),
+                                color = HospitalNavy,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
                     }
                 }
             }
