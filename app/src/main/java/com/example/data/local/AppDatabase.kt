@@ -9,9 +9,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-@Database(entities = [TestEntity::class], version = 2, exportSchema = false)
+@Database(entities = [TestEntity::class, DoctorEntity::class], version = 4, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun testDao(): TestDao
+    abstract fun doctorDao(): DoctorDao
 
     companion object {
         @Volatile
@@ -29,11 +30,18 @@ abstract class AppDatabase : RoomDatabase() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         super.onCreate(db)
                         CoroutineScope(Dispatchers.IO).launch {
-                            val dao = getInstance(context).testDao()
-                            val initialEntities = DefaultTestData.initialTests.map {
+                            val dbInstance = getInstance(context)
+                            val testDao = dbInstance.testDao()
+                            val initialTests = DefaultTestData.initialTests.map {
                                 TestEntity.fromDomain(it)
                             }
-                            dao.insertAll(initialEntities)
+                            testDao.insertAll(initialTests)
+
+                            val doctorDao = dbInstance.doctorDao()
+                            val initialDoctors = DefaultDoctorData.initialDoctors.map {
+                                DoctorEntity.fromDomain(it)
+                            }
+                            doctorDao.insertAll(initialDoctors)
                         }
                     }
                 }).build()

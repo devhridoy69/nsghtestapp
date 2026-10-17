@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -87,6 +88,7 @@ fun SelectedTestsBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp)
         ) {
@@ -146,7 +148,7 @@ fun SelectedTestsBottomSheet(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Please Confirm The Final Price From The Counter.. 01711902062",
+                        text = "হাসপাতাল কর্তৃপক্ষের সিদ্ধান্ত অনুযায়ী যেকোনো সময় টেস্টের মূল্য কম বা বেশি হতে পারে, যা তাৎক্ষণিকভাবে অ্যাপে আপডেট নাও হতে পারে। তাই চূড়ান্ত বিল সম্পর্কে নিশ্চিত হতে অনুগ্রহ করে আমাদের বিলিং সেকশনে যোগাযোগ করুন।",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF78350F)

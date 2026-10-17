@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">SGH Test Rate</string>
     <string name="hospital_name">New Shafipur General Hospital</string>
-    <string name="cash_counter_notice">Please Confirm The Final Price From The Counter.. 01711902062</string>
+    <string name="cash_counter_notice">হাসপাতাল কর্তৃপক্ষের সিদ্ধান্ত অনুযায়ী যেকোনো সময় টেস্টের মূল্য কম বা বেশি হতে পারে, যা তাৎক্ষণিকভাবে অ্যাপে আপডেট নাও হতে পারে। তাই চূড়ান্ত বিল সম্পর্কে নিশ্চিত হতে অনুগ্রহ করে আমাদের বিলিং সেকশনে যোগাযোগ করুন।</string>
     <string name="developer_credit">Made By Hridoy Islam Rabby • 01780960370 • IT-Incharge, New Shafipur General Hospital</string>
 </resources>

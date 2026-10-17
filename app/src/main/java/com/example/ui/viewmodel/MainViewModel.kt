@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.model.DiagnosticTest
+import com.example.data.model.Doctor
 import com.example.data.repository.SyncStatus
 import com.example.data.repository.TestRepository
 import com.example.network.NetworkMonitor
@@ -20,6 +21,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
+enum class AppScreen {
+    TESTS,
+    DOCTORS
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = TestRepository(application)
@@ -33,6 +42,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val syncStatus: StateFlow<SyncStatus> = repository.syncStatus
 
+    // Navigation screen state
+    private val _currentScreen = MutableStateFlow(AppScreen.TESTS)
+    val currentScreen = _currentScreen.asStateFlow()
+
+    // Slide-in Drawer / Side Sheet state
+    private val _showSideDrawer = MutableStateFlow(false)
+    val showSideDrawer = _showSideDrawer.asStateFlow()
+
+    // Search & Sort for Tests
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
 
@@ -52,11 +70,51 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         initialValue = emptyList()
     )
 
-    // Selected tests in the calculation tray: map of ID -> Test
+    // Doctor List state & filtering
+    private val _doctorSearchQuery = MutableStateFlow("")
+    val doctorSearchQuery = _doctorSearchQuery.asStateFlow()
+
+    private val _selectedSpecialityFilter = MutableStateFlow("All")
+    val selectedSpecialityFilter = _selectedSpecialityFilter.asStateFlow()
+
+    val allDoctors: StateFlow<List<Doctor>> = repository.getAllDoctors().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    val filteredDoctors: StateFlow<List<Doctor>> = combine(
+        allDoctors,
+        _doctorSearchQuery,
+        _selectedSpecialityFilter
+    ) { docs, query, spec ->
+        docs.filter { doc ->
+            val matchesQuery = query.isBlank() ||
+                doc.name.contains(query, ignoreCase = true) ||
+                doc.speciality.contains(query, ignoreCase = true) ||
+                doc.degree.contains(query, ignoreCase = true) ||
+                doc.chamberDay.contains(query, ignoreCase = true) ||
+                doc.chamberTime.contains(query, ignoreCase = true) ||
+                doc.roomNo.contains(query, ignoreCase = true) ||
+                doc.chamberDay2.contains(query, ignoreCase = true) ||
+                doc.chamberTime2.contains(query, ignoreCase = true) ||
+                doc.roomNo2.contains(query, ignoreCase = true)
+
+            val matchesSpec = spec == "All" || doc.speciality.contains(spec, ignoreCase = true)
+
+            matchesQuery && matchesSpec
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    // Selected tests in calculation tray
     private val _selectedTests = MutableStateFlow<Map<String, DiagnosticTest>>(emptyMap())
     val selectedTests = _selectedTests.asStateFlow()
 
-    // Discount percentage (0, 5, 10, 15, 20 etc)
+    // Discount percentage
     private val _discountPercentage = MutableStateFlow(0.0)
     val discountPercentage = _discountPercentage.asStateFlow()
 
@@ -91,12 +149,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setScreen(screen: AppScreen) {
+        _currentScreen.value = screen
+    }
+
+    fun setSideDrawerVisible(visible: Boolean) {
+        _showSideDrawer.value = visible
+    }
+
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query
     }
 
     fun onSortByChange(sort: String) {
         _sortBy.value = sort
+    }
+
+    fun onDoctorSearchChange(query: String) {
+        _doctorSearchQuery.value = query
+    }
+
+    fun onSpecialityFilterChange(speciality: String) {
+        _selectedSpecialityFilter.value = speciality
     }
 
     fun toggleTestSelection(test: DiagnosticTest) {
@@ -124,8 +198,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _selectedTests.value = emptyMap()
     }
 
-    fun setDiscount(percent: Double) {
-        _discountPercentage.value = percent
+    fun setDiscount(percentage: Double) {
+        _discountPercentage.value = percentage
     }
 
     fun setEstimateSheetVisible(visible: Boolean) {
@@ -146,67 +220,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun saveSupabaseConfig(url: String, key: String, table: String) {
+        repository.supabaseService.saveConfig(url, key, table)
+        manualSync()
+    }
+
+    fun getSupabaseConfig(): Triple<String, String, String> {
+        return Triple(
+            repository.supabaseService.getSupabaseUrl(),
+            repository.supabaseService.getSupabaseKey(),
+            repository.supabaseService.getSupabaseTable()
+        )
+    }
+
+    fun getLastSyncTimeString(): String {
+        val time = repository.supabaseService.getLastSyncTime()
+        if (time == 0L) return "Never synced"
+        val sdf = SimpleDateFormat("MMM dd, yyyy - hh:mm a", Locale.getDefault())
+        return sdf.format(Date(time))
+    }
+
     fun resetCatalogToDefaults() {
         viewModelScope.launch {
             repository.resetToDefaultCatalog()
         }
     }
 
-    fun saveSupabaseConfig(url: String, key: String, table: String) {
-        repository.supabaseService.saveConfig(url, key, table)
-        viewModelScope.launch {
-            repository.syncFromRemote(isAutoSync = false)
-        }
-    }
-
-    fun getSupabaseConfig(): Triple<String, String, String> {
-        val s = repository.supabaseService
-        return Triple(s.getSupabaseUrl(), s.getSupabaseKey(), s.getSupabaseTable())
-    }
-
-    fun getLastSyncTimeString(): String {
-        val time = repository.supabaseService.getLastSyncTime()
-        if (time == 0L) return "Never synced"
-        val sdf = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault())
-        return sdf.format(Date(time))
-    }
-
     fun generateEstimateSummaryText(): String {
-        val items = _selectedTests.value.values.toList()
-        if (items.isEmpty()) return ""
-
-        val subtotal = items.sumOf { it.price }
-        val discountPercent = _discountPercentage.value
-        val discountAmount = subtotal * (discountPercent / 100.0)
-        val finalPrice = subtotal - discountAmount
-        val dateStr = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date())
+        val list = _selectedTests.value.values.toList()
+        if (list.isEmpty()) return ""
 
         val sb = StringBuilder()
-        sb.append("════════════════════════════════\n")
-        sb.append(" NEW SHAFIPUR GENERAL HOSPITAL \n")
-        sb.append(" Shafipur, Kaliakair, Gazipur   \n")
-        sb.append(" Diagnostic Test Price Estimate \n")
-        sb.append(" Date: $dateStr\n")
-        sb.append("════════════════════════════════\n\n")
+        sb.appendLine("🏥 NEW SHAFIPUR GENERAL HOSPITAL (NSGH)")
+        sb.appendLine("📋 Diagnostic Test Bill Estimate")
+        sb.appendLine("📅 Date: ${SimpleDateFormat("dd-MM-yyyy hh:mm a", Locale.getDefault()).format(Date())}")
+        sb.appendLine("--------------------------------")
 
-        items.forEachIndexed { index, test ->
-            sb.append("${index + 1}. ${test.name}\n")
-            sb.append("   Price: ৳ ${test.price.toInt()}\n")
+        var subtotal = 0.0
+        list.forEachIndexed { index, test ->
+            sb.appendLine("${index + 1}. ${test.name} - ৳ ${test.price.toInt()}")
+            subtotal += test.price
         }
 
-        sb.append("\n────────────────────────────────\n")
-        sb.append("Total Tests: ${items.size}\n")
-        sb.append("Subtotal: ৳ ${subtotal.toInt()}\n")
-        if (discountPercent > 0) {
-            sb.append("Discount ($discountPercent%): - ৳ ${discountAmount.toInt()}\n")
-        }
-        sb.append("Estimated Net Total: ৳ ${finalPrice.toInt()}\n")
-        sb.append("────────────────────────────────\n")
-        sb.append("⚠️ NOTE: Please Confirm The Final Price From The Counter.. 01711902062\n")
-        sb.append("App Developed by: Hridoy Islam Rabby (01780960370)\n")
-        sb.append("IT-Incharge, New Shafipur General Hospital\n")
-        sb.append("════════════════════════════════\n")
+        sb.appendLine("--------------------------------")
+        sb.appendLine("Subtotal (${list.size} tests): ৳ ${subtotal.toInt()}")
 
+        val discount = _discountPercentage.value
+        if (discount > 0) {
+            val discountAmount = subtotal * (discount / 100.0)
+            sb.appendLine("Special Discount (${discount.toInt()}%): - ৳ ${discountAmount.toInt()}")
+            sb.appendLine("Total Payable: ৳ ${(subtotal - discountAmount).toInt()}")
+        } else {
+            sb.appendLine("Total Payable: ৳ ${subtotal.toInt()}")
+        }
+
+        sb.appendLine("--------------------------------")
+        sb.appendLine("⚠️ Please confirm the final price at the cash counter.")
+        sb.appendLine("📞 Helpline: 01711902062")
         return sb.toString()
     }
 }

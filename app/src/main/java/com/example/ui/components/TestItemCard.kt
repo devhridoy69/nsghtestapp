@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -36,8 +37,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
@@ -47,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.DiagnosticTest
 import com.example.ui.theme.HospitalNavy
 import com.example.ui.theme.HospitalTeal
+import com.example.ui.theme.MedicalRed
 
 @Composable
 fun TestItemCard(
@@ -59,27 +61,39 @@ fun TestItemCard(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
-    // 1. Tactile spring scale physics on tap/press
+    // Hardware-accelerated spring scale physics on tap/press for 60fps responsiveness
     val pressScale by animateFloatAsState(
         targetValue = if (isPressed) 0.97f else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
+            stiffness = Spring.StiffnessMediumLow
         ),
         label = "press_scale"
     )
 
-    // 2. Fluid color & border transitions
-    val borderColor by animateColorAsState(
-        targetValue = if (isSelected) HospitalNavy else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
-        animationSpec = tween(durationMillis = 200),
-        label = "border_color"
+    // Full color illuminated background when selected
+    val cardBgColor by animateColorAsState(
+        targetValue = if (isSelected) Color(0xFF0F3A66) else Color.White,
+        animationSpec = tween(durationMillis = 180),
+        label = "card_bg"
     )
 
-    val cardBgColor by animateColorAsState(
-        targetValue = if (isSelected) Color(0xFFF0F7FF) else MaterialTheme.colorScheme.surface,
-        animationSpec = tween(durationMillis = 200),
-        label = "card_bg"
+    val titleColor by animateColorAsState(
+        targetValue = if (isSelected) Color.White else Color(0xFF1E293B),
+        animationSpec = tween(durationMillis = 180),
+        label = "title_color"
+    )
+
+    val priceColor by animateColorAsState(
+        targetValue = if (isSelected) Color(0xFF38BDF8) else HospitalNavy,
+        animationSpec = tween(durationMillis = 180),
+        label = "price_color"
+    )
+
+    val borderColor by animateColorAsState(
+        targetValue = if (isSelected) Color(0xFF38BDF8) else MaterialTheme.colorScheme.outline.copy(alpha = 0.28f),
+        animationSpec = tween(durationMillis = 180),
+        label = "border_color"
     )
 
     val borderWidth by animateDpAsState(
@@ -89,12 +103,12 @@ fun TestItemCard(
     )
 
     val cardElevation by animateDpAsState(
-        targetValue = if (isSelected) 4.dp else 1.dp,
-        animationSpec = tween(180),
+        targetValue = if (isSelected) 6.dp else 1.dp,
+        animationSpec = tween(150),
         label = "elevation"
     )
 
-    // 3. Checkmark pop bounce
+    // Checkmark pop bounce
     val buttonScale by animateFloatAsState(
         targetValue = if (isSelected) 1.05f else 1f,
         animationSpec = spring(
@@ -104,21 +118,18 @@ fun TestItemCard(
         label = "button_scale"
     )
 
-    val buttonBgColor by animateColorAsState(
-        targetValue = if (isSelected) HospitalNavy else HospitalNavy.copy(alpha = 0.08f),
-        animationSpec = tween(180),
-        label = "btn_bg"
-    )
-
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .scale(pressScale)
-            .clip(RoundedCornerShape(14.dp))
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
+            .clip(RoundedCornerShape(16.dp))
             .border(
                 width = borderWidth,
                 color = borderColor,
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(16.dp)
             )
             .clickable(
                 interactionSource = interactionSource,
@@ -138,18 +149,30 @@ fun TestItemCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Test Name
-            Column(
+            // Test Name and Selection Indicator
+            Row(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 12.dp)
+                    .padding(end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                if (isSelected) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Selected",
+                        tint = Color(0xFF38BDF8),
+                        modifier = Modifier
+                            .size(20.dp)
+                            .padding(end = 6.dp)
+                    )
+                }
+
                 Text(
                     text = test.name,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    lineHeight = 21.sp
+                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                    color = titleColor,
+                    lineHeight = 22.sp
                 )
             }
 
@@ -162,7 +185,7 @@ fun TestItemCard(
                         text = "৳",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        color = HospitalNavy,
+                        color = priceColor,
                         modifier = Modifier.padding(bottom = 2.dp)
                     )
                     Spacer(modifier = Modifier.width(3.dp))
@@ -170,7 +193,7 @@ fun TestItemCard(
                         text = "${test.price.toInt()}",
                         fontSize = 22.sp,
                         fontWeight = FontWeight.Black,
-                        color = HospitalNavy
+                        color = priceColor
                     )
                 }
 
@@ -179,9 +202,14 @@ fun TestItemCard(
                 // Select / Selected Tactile Button with Spring Bounce
                 Box(
                     modifier = Modifier
-                        .scale(buttonScale)
+                        .graphicsLayer {
+                            scaleX = buttonScale
+                            scaleY = buttonScale
+                        }
                         .clip(RoundedCornerShape(8.dp))
-                        .background(buttonBgColor)
+                        .background(
+                            if (isSelected) Color(0xFF38BDF8) else HospitalNavy.copy(alpha = 0.08f)
+                        )
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                         .testTag("select_toggle_${test.effectiveId}"),
                     contentAlignment = Alignment.Center
@@ -193,15 +221,15 @@ fun TestItemCard(
                         Icon(
                             imageVector = if (isSelected) Icons.Default.Check else Icons.Default.Add,
                             contentDescription = if (isSelected) "Selected" else "Add",
-                            tint = if (isSelected) Color.White else HospitalNavy,
+                            tint = if (isSelected) Color(0xFF0F3A66) else HospitalNavy,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = if (isSelected) "SELECTED" else "SELECT",
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isSelected) Color.White else HospitalNavy,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isSelected) Color(0xFF0F3A66) else HospitalNavy,
                             letterSpacing = 0.5.sp
                         )
                     }

@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import com.example.BuildConfig
 import com.example.data.model.DiagnosticTest
+import com.example.data.model.Doctor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -26,12 +27,14 @@ class SupabaseService(context: Context) {
         const val PREF_SUPABASE_URL = "supabase_url"
         const val PREF_SUPABASE_ANON_KEY = "supabase_anon_key"
         const val PREF_SUPABASE_TABLE = "supabase_table"
+        const val PREF_DOCTOR_TABLE = "supabase_doctor_table"
         const val PREF_LAST_SYNC_TIME = "last_sync_time"
         const val PREF_SAVED_NOTICE = "saved_notice_text"
 
         const val DEFAULT_URL = "https://lrhlmalvppklxandtwhk.supabase.co"
         const val DEFAULT_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxyaGxtYWx2cHBrbHhhbmR0d2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NjU0ODMsImV4cCI6MjEwNzE0MTQ4M30.TNVfzGHEwh20sJtLJMl2O1Dl4R8rDpLhV5isMUX3Kmk"
         const val DEFAULT_TABLE = "tests"
+        const val DEFAULT_DOCTOR_TABLE = "doctors"
         const val DEFAULT_NOTICE = "টেস্টের দাম যে কোনো সময় কমতে বা বাড়তে পারে। যে কোনো সমস্যায় 01711902062"
     }
 
@@ -59,6 +62,12 @@ class SupabaseService(context: Context) {
         return DEFAULT_TABLE
     }
 
+    fun getDoctorTable(): String {
+        val saved = prefs.getString(PREF_DOCTOR_TABLE, "") ?: ""
+        if (saved.isNotBlank()) return saved
+        return DEFAULT_DOCTOR_TABLE
+    }
+
     fun getLastSyncTime(): Long = prefs.getLong(PREF_LAST_SYNC_TIME, 0L)
 
     fun getSavedNotice(): String = prefs.getString(PREF_SAVED_NOTICE, DEFAULT_NOTICE) ?: DEFAULT_NOTICE
@@ -84,7 +93,6 @@ class SupabaseService(context: Context) {
         val key = getSupabaseKey()
         if (url.isBlank() || key.isBlank()) return@withContext getSavedNotice()
 
-        // Try checking if a 'notices' or 'app_notice' table exists in Supabase
         val possibleTables = listOf("notices", "app_notice", "settings")
         for (tbl in possibleTables) {
             try {
@@ -163,6 +171,85 @@ class SupabaseService(context: Context) {
         }
     }
 
+    suspend fun fetchDoctors(): Result<List<Doctor>> = withContext(Dispatchers.IO) {
+        val url = getSupabaseUrl()
+        val key = getSupabaseKey()
+        val table = getDoctorTable()
+
+        if (url.isBlank() || key.isBlank()) {
+            return@withContext Result.failure(
+                IllegalStateException("Supabase Project URL and Anon API Key are required.")
+            )
+        }
+
+        val possibleTables = listOf(table, "doctors", "doctor_list", "hospital_doctors")
+        for (tbl in possibleTables) {
+            try {
+                val requestUrl = "$url/rest/v1/$tbl?select=*"
+                val request = Request.Builder()
+                    .url(requestUrl)
+                    .addHeader("apikey", key)
+                    .addHeader("Authorization", "Bearer $key")
+                    .addHeader("Accept", "application/json")
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val jsonString = response.body?.string() ?: "[]"
+                        val parsedDoctors = parseDoctorsJson(jsonString)
+                        if (parsedDoctors.isNotEmpty()) {
+                            return@withContext Result.success(parsedDoctors)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("SupabaseService", "Error trying table $tbl for doctors", e)
+            }
+        }
+        Result.success(emptyList())
+    }
+
+    private fun parseDoctorsJson(jsonString: String): List<Doctor> {
+        val list = mutableListOf<Doctor>()
+        val jsonArray = JSONArray(jsonString)
+
+        for (i in 0 until jsonArray.length()) {
+            val obj = jsonArray.getJSONObject(i)
+
+            val name = optStringAny(obj, "name", "Name", "DoctorName", "doctor_name", "doctor") ?: continue
+            val speciality = optStringAny(obj, "speciality", "Speciality", "specialty", "Specialty", "Department", "department", "designation") ?: ""
+            val degree = optStringAny(obj, "degree", "Degree", "Qualification", "qualification", "degrees") ?: ""
+            
+            // Schedule 1
+            val chamberDay = optStringAny(obj, "chamber_day", "chamberDay", "Chamber_Day", "ChamberDay", "day") ?: ""
+            val chamberTime = optStringAny(obj, "chamber_time", "chamberTime", "Chamber_Time", "ChamberTime", "time", "visiting_hours", "visiting_time") ?: ""
+            val roomNo = optStringAny(obj, "room_no", "roomNo", "Room_No", "RoomNo", "room", "Room", "chamber_no", "chamber") ?: ""
+            
+            // Schedule 2
+            val chamberDay2 = optStringAny(obj, "chamber_day2", "chamberDay2", "Chamber_Day2", "ChamberDay2", "day2") ?: ""
+            val chamberTime2 = optStringAny(obj, "chamber_time2", "chamberTime2", "Chamber_Time2", "ChamberTime2", "time2") ?: ""
+            val roomNo2 = optStringAny(obj, "room_no2", "roomNo2", "Room_No2", "RoomNo2", "room2", "Room2") ?: ""
+
+            val id = optStringAny(obj, "id", "doctor_id", "ID") ?: "doc_${name.lowercase().trim().replace(Regex("[^a-z0-9]"), "_")}"
+
+            list.add(
+                Doctor(
+                    id = id,
+                    name = name,
+                    speciality = speciality,
+                    degree = degree,
+                    chamberDay = chamberDay,
+                    chamberTime = chamberTime,
+                    roomNo = roomNo,
+                    chamberDay2 = chamberDay2,
+                    chamberTime2 = chamberTime2,
+                    roomNo2 = roomNo2
+                )
+            )
+        }
+        return list
+    }
+
     private fun parseNameAndPriceJson(jsonString: String): List<DiagnosticTest> {
         val list = mutableListOf<DiagnosticTest>()
         val jsonArray = JSONArray(jsonString)
@@ -170,9 +257,9 @@ class SupabaseService(context: Context) {
         for (i in 0 until jsonArray.length()) {
             val obj = jsonArray.getJSONObject(i)
 
-            val name = optStringAny(obj, "name", "test_name", "title", "test") ?: "Unnamed Test"
-            val price = optDoubleAny(obj, "price", "test_price", "rate", "cost", "amount")
-            val id = optStringAny(obj, "id", "test_id") ?: "test_${name.lowercase().trim().replace(Regex("[^a-z0-9]"), "_")}"
+            val name = optStringAny(obj, "name", "test_name", "title", "test", "Name") ?: "Unnamed Test"
+            val price = optDoubleAny(obj, "price", "test_price", "rate", "cost", "amount", "Price")
+            val id = optStringAny(obj, "id", "test_id", "ID") ?: "test_${name.lowercase().trim().replace(Regex("[^a-z0-9]"), "_")}"
 
             list.add(
                 DiagnosticTest(
@@ -188,8 +275,8 @@ class SupabaseService(context: Context) {
     private fun optStringAny(obj: JSONObject, vararg keys: String): String? {
         for (key in keys) {
             if (obj.has(key) && !obj.isNull(key)) {
-                val str = obj.optString(key, "").trim()
-                if (str.isNotBlank()) return str
+                val str = obj.opt(key)?.toString()?.trim() ?: ""
+                if (str.isNotBlank() && str != "null") return str
             }
         }
         return null
