@@ -41,6 +41,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     val syncStatus: StateFlow<SyncStatus> = repository.syncStatus
+    val noticeText: StateFlow<String> = repository.noticeText
 
     // Navigation screen state
     private val _currentScreen = MutableStateFlow(AppScreen.TESTS)

@@ -35,7 +35,7 @@ class SupabaseService(context: Context) {
         const val DEFAULT_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxyaGxtYWx2cHBrbHhhbmR0d2hrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NjU0ODMsImV4cCI6MjEwNzE0MTQ4M30.TNVfzGHEwh20sJtLJMl2O1Dl4R8rDpLhV5isMUX3Kmk"
         const val DEFAULT_TABLE = "tests"
         const val DEFAULT_DOCTOR_TABLE = "doctors"
-        const val DEFAULT_NOTICE = "টেস্টের দাম যে কোনো সময় কমতে বা বাড়তে পারে। যে কোনো সমস্যায় 01711902062"
+        const val DEFAULT_NOTICE = "হাসপাতাল কর্তৃপক্ষের সিদ্ধান্ত অনুযায়ী যেকোনো সময় টেস্টের মূল্য কম বা বেশি হতে পারে, যা তাৎক্ষণিকভাবে অ্যাপে আপডেট নাও হতে পারে। তাই চূড়ান্ত বিল সম্পর্কে নিশ্চিত হতে অনুগ্রহ করে আমাদের বিলিং সেকশনে যোগাযোগ করুন।"
     }
 
     fun getSupabaseUrl(): String {
@@ -70,7 +70,13 @@ class SupabaseService(context: Context) {
 
     fun getLastSyncTime(): Long = prefs.getLong(PREF_LAST_SYNC_TIME, 0L)
 
-    fun getSavedNotice(): String = prefs.getString(PREF_SAVED_NOTICE, DEFAULT_NOTICE) ?: DEFAULT_NOTICE
+    fun getSavedNotice(): String {
+        val saved = prefs.getString(PREF_SAVED_NOTICE, DEFAULT_NOTICE) ?: DEFAULT_NOTICE
+        if (saved.isBlank() || saved == "টেস্টের দাম যে কোনো সময় কমতে বা বাড়তে পারে। যে কোনো সমস্যায় 01711902062") {
+            return DEFAULT_NOTICE
+        }
+        return saved
+    }
 
     fun saveNotice(notice: String) {
         prefs.edit().putString(PREF_SAVED_NOTICE, notice.trim()).apply()
@@ -93,11 +99,11 @@ class SupabaseService(context: Context) {
         val key = getSupabaseKey()
         if (url.isBlank() || key.isBlank()) return@withContext getSavedNotice()
 
-        val possibleTables = listOf("notices", "app_notice", "settings")
+        val possibleTables = listOf("notices", "notice", "app_notice", "settings")
         for (tbl in possibleTables) {
             try {
                 val request = Request.Builder()
-                    .url("$url/rest/v1/$tbl?select=*&limit=1")
+                    .url("$url/rest/v1/$tbl?select=*")
                     .addHeader("apikey", key)
                     .addHeader("Authorization", "Bearer $key")
                     .addHeader("Accept", "application/json")
@@ -108,11 +114,27 @@ class SupabaseService(context: Context) {
                         val body = response.body?.string() ?: ""
                         val arr = JSONArray(body)
                         if (arr.length() > 0) {
-                            val obj = arr.getJSONObject(0)
-                            val text = optStringAny(obj, "notice", "text", "message", "value", "content")
-                            if (!text.isNullOrBlank()) {
-                                saveNotice(text)
-                                return@withContext text
+                            val noticesList = mutableListOf<String>()
+                            for (i in 0 until arr.length()) {
+                                val obj = arr.getJSONObject(i)
+                                val text = optStringAny(
+                                    obj,
+                                    "notice_text",
+                                    "notice",
+                                    "text",
+                                    "message",
+                                    "title",
+                                    "value",
+                                    "content"
+                                )
+                                if (!text.isNullOrBlank()) {
+                                    noticesList.add(text)
+                                }
+                            }
+                            if (noticesList.isNotEmpty()) {
+                                val combined = noticesList.joinToString("   •   ")
+                                saveNotice(combined)
+                                return@withContext combined
                             }
                         }
                     }

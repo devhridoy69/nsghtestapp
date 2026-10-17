@@ -109,6 +109,7 @@ fun MainDashboardScreen(
     val selectedTestsMap by viewModel.selectedTests.collectAsState()
     val isOnline by viewModel.isOnline.collectAsState()
     val syncStatus by viewModel.syncStatus.collectAsState()
+    val noticeText by viewModel.noticeText.collectAsState()
     val showEstimateSheet by viewModel.showEstimateSheet.collectAsState()
     val showCreditsDialog by viewModel.showCreditsDialog.collectAsState()
     val discountPercentage by viewModel.discountPercentage.collectAsState()
@@ -387,8 +388,9 @@ fun MainDashboardScreen(
                                 .padding(paddingValues)
                                 .background(MaterialTheme.colorScheme.background)
                         ) {
-                            // 1. Sliding Marquee Notice Banner
+                            // 1. Sliding Marquee Notice Banner (Auto-Synced from Supabase)
                             SlidingMarqueeText(
+                                text = noticeText,
                                 modifier = Modifier
                                     .padding(horizontal = 16.dp)
                                     .padding(top = 10.dp, bottom = 4.dp)

@@ -83,6 +83,7 @@ fun DoctorListScreen(
     val allDoctors by viewModel.allDoctors.collectAsState()
     val selectedFilter by viewModel.selectedSpecialityFilter.collectAsState()
     val syncStatus by viewModel.syncStatus.collectAsState()
+    val noticeText by viewModel.noticeText.collectAsState()
 
     val listState = rememberLazyListState()
 
@@ -292,8 +293,9 @@ fun DoctorListScreen(
                 .padding(paddingValues)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // Notice Marquee
+            // Notice Marquee (Auto-Synced from Supabase)
             SlidingMarqueeText(
+                text = noticeText,
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
                     .padding(top = 8.dp, bottom = 4.dp)

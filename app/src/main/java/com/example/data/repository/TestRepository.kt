@@ -37,6 +37,9 @@ class TestRepository(private val context: Context) {
     private val _syncStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
     val syncStatus = _syncStatus.asStateFlow()
 
+    private val _noticeText = MutableStateFlow(supabaseService.getSavedNotice())
+    val noticeText = _noticeText.asStateFlow()
+
     fun getAllTests(
         query: String = "",
         sortBy: String = "name_asc"
@@ -88,7 +91,8 @@ class TestRepository(private val context: Context) {
         // Sync doctors
         val doctorResult = supabaseService.fetchDoctors()
         // Sync notice
-        supabaseService.fetchNotice()
+        val latestNotice = supabaseService.fetchNotice()
+        _noticeText.value = latestNotice
 
         var totalItems = 0
         var testSuccess = false
